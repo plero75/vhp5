@@ -1,0 +1,71 @@
+body {
+  font-family: system-ui, sans-serif;
+  background: #f5f5f5;
+  margin: 0;
+  color: #222;
+}
+header {
+  background: #003366;
+  color: #fff;
+  padding: 12px 20px;
+  text-align: center;
+  font-size: 1.5em;
+}
+.grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  max-width: 1200px;
+  margin: 20px auto;
+  padding: 0 12px;
+}
+.transport-block {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 10px 15px;
+  background: #fff;
+  box-shadow: 0 2px 8px #0001;
+  min-height: 150px;
+}
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.logo {
+  font-weight: bold;
+  font-size: 1.8em;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  line-height: 36px;
+  text-align: center;
+  color: white;
+}
+.logo-rer { background: #d32029; }
+.logo-bus201 { background: #2c7a26; }
+.logo-bus77 { background: #0077c2; }
+.directions { font-size: 0.9em; color: #444; flex-grow: 1; }
+.alert-banner {
+  background: #fff3cd;
+  color: #856404;
+  padding: 4px 8px;
+  border-radius: 5px;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+.schedules { font-size: 1em; line-height: 1.4; }
+.firstlast { margin-top: 6px; font-size: 0.85em; color: #666; }
+.stops-scroll {
+  display: inline-block;
+  white-space: nowrap;
+  animation: ticker 45s linear infinite;
+  font-size: 0.9em;
+  color: #555;
+  margin-top: 4px;
+}
+@keyframes ticker {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
