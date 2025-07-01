@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dashboard Mobilité – Hippodrome Vincennes</title>
+<link rel="stylesheet" href="style.css" />
+<script type="module" src="script.js" defer></script>
+</head>
+<body>
+  <header>
+    <h1>🚦 Dashboard Mobilité – Hippodrome Vincennes <span id="datetime"></span></h1>
+  </header>
+  <main class="grid">
+    <section id="rer" class="transport-block">
+      <div class="header">
+        <div class="logo logo-rer">A</div>
+        <h2>RER A - Joinville-le-Pont</h2>
+        <div class="directions">Vers La Défense / Marne-la-Vallée</div>
+      </div>
+      <div id="rer-alert" class="alert-banner"></div>
+      <div id="rer-schedules" class="schedules"></div>
+      <div id="rer-firstlast" class="firstlast"></div>
+    </section>
+
+    <section id="bus201" class="transport-block">
+      <div class="header">
+        <div class="logo logo-bus201">201</div>
+        <h2>Bus 201 - Pyramide – École du Breuil</h2>
+        <div class="directions">Vers Château de Vincennes / Maisons-Alfort</div>
+      </div>
+      <div id="bus201-alert" class="alert-banner"></div>
+      <div id="bus201-schedules" class="schedules"></div>
+      <div id="bus201-firstlast" class="firstlast"></div>
+    </section>
+
+    <section id="bus77" class="transport-block">
+      <div class="header">
+        <div class="logo logo-bus77">77</div>
+        <h2>Bus 77 - Hippodrome de Vincennes</h2>
+        <div class="directions">Vers Joinville-le-Pont / Porte de Vincennes</div>
+      </div>
+      <div id="bus77-alert" class="alert-banner"></div>
+      <div id="bus77-schedules" class="schedules"></div>
+      <div id="bus77-firstlast" class="firstlast"></div>
+    </section>
+
+    <section id="meteo" class="transport-block">
+      <h2>🌤 Météo locale</h2>
+    </section>
+
+    <section id="courses" class="transport-block">
+      <h2>🏇 Courses à Vincennes</h2>
+    </section>
+
+    <section id="newsTicker" class="transport-block">
+      <h2>📰 Actualités</h2>
+    </section>
+  </main>
+</body>
+</html>
