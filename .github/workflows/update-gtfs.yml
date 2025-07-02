@@ -20,6 +20,9 @@ jobs:
       - name: Installer les dépendances
         run: npm install node-fetch unzipper csv-parse
 
+      - name: Débogage avant exécution
+        run: echo "🔍 Lancement imminent de node scripts/update-gtfs.js"
+
       - name: Exécuter la mise à jour GTFS
         run: node scripts/update-gtfs.js
 
