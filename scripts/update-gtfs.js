@@ -29,7 +29,7 @@ async function needUpdate(modified) {
 }
 
 async function download(url, path) {
-  console.log("⬇️ Téléchargement du GTFS...");
+console.log("Téléchargement depuis l'URL :", url);
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Erreur HTTP ${res.status} lors du téléchargement`);
   const fileStream = fs.createWriteStream(path);
