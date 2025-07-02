@@ -2,8 +2,8 @@ name: Update GTFS Cache
 
 on:
   schedule:
-    - cron: '0 0 * * 1'   # chaque lundi à minuit
-  workflow_dispatch:
+    - cron: '0 0 * * 1'   # Chaque lundi à minuit
+  workflow_dispatch:       # Lancement manuel possible
 
 jobs:
   update-cache:
@@ -12,7 +12,7 @@ jobs:
       - name: Checkout du code
         uses: actions/checkout@v4
 
-      - name: Configurer Node
+      - name: Configurer Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -20,13 +20,13 @@ jobs:
       - name: Installer les dépendances
         run: npm install node-fetch unzipper csv-parse
 
-      - name: Mettre à jour les fichiers GTFS
+      - name: Exécuter la mise à jour GTFS
         run: node scripts/update-gtfs.js
 
-      - name: Commit et push si modifications
+      - name: Commit et push si changements
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add static/*.json
+          git add static/*.json last-update.txt
           git commit -m "chore: update GTFS static data [skip ci]" || echo "Aucun changement"
           git push
