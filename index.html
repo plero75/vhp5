@@ -14,7 +14,7 @@
   <main class="grid">
     <section id="rer" class="transport-block">
       <div class="header">
-        <div class="logo logo-rer">A</div>
+        <div class="logo logo-rer" title="RER A" tabindex="0">A</div>
         <h2>RER A - Joinville-le-Pont</h2>
         <div class="directions">Vers La Défense / Marne-la-Vallée</div>
       </div>
@@ -25,7 +25,7 @@
 
     <section id="bus201" class="transport-block">
       <div class="header">
-        <div class="logo logo-bus201">201</div>
+        <div class="logo logo-bus201" title="Bus 201" tabindex="0">201</div>
         <h2>Bus 201 - Pyramide – École du Breuil</h2>
         <div class="directions">Vers Château de Vincennes / Maisons-Alfort</div>
       </div>
@@ -36,7 +36,7 @@
 
     <section id="bus77" class="transport-block">
       <div class="header">
-        <div class="logo logo-bus77">77</div>
+        <div class="logo logo-bus77" title="Bus 77" tabindex="0">77</div>
         <h2>Bus 77 - Hippodrome de Vincennes</h2>
         <div class="directions">Vers Joinville-le-Pont / Porte de Vincennes</div>
       </div>
@@ -45,17 +45,20 @@
       <div id="bus77-firstlast" class="firstlast"></div>
     </section>
 
-    <section id="meteo" class="transport-block">
+    <section id="meteo" class="transport-block" aria-label="Météo locale">
       <h2>🌤 Météo locale</h2>
     </section>
 
-    <section id="courses" class="transport-block">
+    <section id="courses" class="transport-block" aria-label="Courses à Vincennes">
       <h2>🏇 Courses à Vincennes</h2>
     </section>
 
-    <section id="newsTicker" class="transport-block">
+    <section id="newsTicker" class="transport-block" aria-label="Actualités">
       <h2>📰 Actualités</h2>
     </section>
   </main>
+  <footer style="text-align:center; color:#888; margin:2em 0 1em;">
+    Données et API © Île-de-France Mobilités & RATP | Réalisation <a href="https://github.com/plero75" target="_blank" rel="noopener">Paul</a> – Utilisation interne hippodrome Vincennes
+  </footer>
 </body>
 </html>
