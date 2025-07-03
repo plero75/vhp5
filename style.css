@@ -69,3 +69,9 @@ header {
   0% { transform: translateX(100%); }
   100% { transform: translateX(-100%); }
 }
+
+/* BONUS: accessibilité, focus visible (ajoute si tu veux) */
+a:focus, button:focus, .logo:focus {
+  outline: 2px solid #003366;
+  outline-offset: 2px;
+}
