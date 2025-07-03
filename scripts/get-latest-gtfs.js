@@ -2,48 +2,99 @@ import fetch from "node-fetch";
 import unzipper from "unzipper";
 import fs from "fs";
 import parse from "csv-parse/sync";
-import { getLatestGTFSInfo } from "./get-latest-gtfs.js";
+import path from "path";
 
+const META_URL = "https://data.iledefrance-mobilites.fr/api/explore/v2.1/catalog/datasets/offre-horaires-tc-gtfs-idfm/exports/json";
 const LAST_UPDATE_FILE = "./last-update.txt";
 const ZIP_DEST = "./gtfs.zip";
 const EXTRACT_DIR = "./gtfs";
+const STATIC_DIR = "./static";
+
+const STOP_IDS = {
+  rer: "STIF:StopArea:SP:43135:",
+  bus77: "STIF:StopArea:SP:463641:",
+  bus201: "STIF:StopArea:SP:463644:",
+};
+
+async function getLatestInfo() {
+  const res = await fetch(META_URL);
+  if (!res.ok) throw new Error(`Erreur HTTP ${res.status} en récupérant les métadonnées`);
+  const data = await res.json();
+  const dataset = data[0];
+  const modified = dataset?.metadata?.modified;
+  const url = dataset?.attachments?.[0]?.url;
+  if (!modified || !url) throw new Error("Date ou lien de téléchargement introuvables dans la réponse JSON.");
+  return { modified, url };
+}
 
 async function needUpdate(modified) {
   if (!fs.existsSync(LAST_UPDATE_FILE)) return true;
   const last = fs.readFileSync(LAST_UPDATE_FILE, "utf8").trim();
-  console.log(`📅 Dernière date connue : ${last}`);
   return last !== modified;
 }
 
-async function download(url, path) {
-  console.log("⬇️ Téléchargement du GTFS...");
+async function download(url, pathFile) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Erreur HTTP ${res.status} lors du téléchargement`);
-  const fileStream = fs.createWriteStream(path);
+  const fileStream = fs.createWriteStream(pathFile);
   await new Promise((resolve, reject) => {
     res.body.pipe(fileStream);
     res.body.on("error", reject);
     fileStream.on("finish", resolve);
   });
-  console.log("✅ GTFS téléchargé :", path);
 }
 
 async function extract(zipPath, outDir) {
-  console.log("📦 Extraction du GTFS...");
   await fs.createReadStream(zipPath).pipe(unzipper.Extract({ path: outDir })).promise();
-  console.log("✅ Extraction terminée");
+}
+
+function ensureDirSync(dir) {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
 function parseStops(stopsPath, outJson) {
-  console.log("📝 Parsing stops.txt...");
   const csv = fs.readFileSync(stopsPath, "utf8");
-  const records = parse.parse(csv, { columns: true });
+  const records = parse(csv, { columns: true });
   fs.writeFileSync(outJson, JSON.stringify(records, null, 2));
-  console.log("✅ Fichier généré :", outJson);
+}
+
+function getFirstLastForStop(stop_id, stopTimes, trips, calendar, todayServiceIds) {
+  // Cherche tous les horaires pour ce stop aujourd'hui
+  const todayTrips = stopTimes
+    .filter(s => s.stop_id === stop_id && todayServiceIds.has(trips[s.trip_id]?.service_id))
+    .map(s => s.departure_time)
+    .filter(Boolean)
+    .map(t => t.padStart(8, "0")); // Ex: 7:30:00 → 07:30:00
+
+  if (!todayTrips.length) return { first: null, last: null };
+
+  todayTrips.sort();
+  return {
+    first: todayTrips[0]?.slice(0, 5) || null,
+    last: todayTrips[todayTrips.length - 1]?.slice(0, 5) || null,
+  };
+}
+
+function getTodayServiceIds(calendar) {
+  // Retourne les service_id actifs aujourd'hui
+  const today = new Date();
+  const weekday = [
+    "sunday","monday","tuesday","wednesday","thursday","friday","saturday"
+  ][today.getDay()];
+  return new Set(
+    calendar.filter(cal =>
+      cal[`${weekday}`] === "1" &&
+      (!cal.start_date || cal.start_date <= formatYYYYMMDD(today)) &&
+      (!cal.end_date || cal.end_date >= formatYYYYMMDD(today))
+    ).map(cal => cal.service_id)
+  );
+}
+function formatYYYYMMDD(d) {
+  return d.toISOString().slice(0,10).replace(/-/g,"");
 }
 
 async function main() {
-  const { modified, url } = await getLatestGTFSInfo();
+  const { modified, url } = await getLatestInfo();
   if (!(await needUpdate(modified))) {
     console.log("👍 GTFS déjà à jour, rien à faire !");
     return;
@@ -52,21 +103,32 @@ async function main() {
   await download(url, ZIP_DEST);
   await extract(ZIP_DEST, EXTRACT_DIR);
 
-  parseStops(`${EXTRACT_DIR}/stops.txt`, "./static/gtfs-stops.json");
+  ensureDirSync(STATIC_DIR);
 
-  const firstLast = {
-    rer: { first: "05:30", last: "23:30" },
-    bus77: { first: "06:00", last: "22:00" },
-    bus201: { first: "06:15", last: "21:45" },
-  };
-  fs.writeFileSync("./static/gtfs-firstlast.json", JSON.stringify(firstLast, null, 2));
-  console.log("✅ Fichier généré : ./static/gtfs-firstlast.json");
+  // Générer stops.json comme avant
+  const stopsFile = path.join(EXTRACT_DIR, "stops.txt");
+  if (!fs.existsSync(stopsFile)) throw new Error("Le fichier stops.txt n'existe pas dans le GTFS !");
+  parseStops(stopsFile, path.join(STATIC_DIR, "gtfs-stops.json"));
+
+  // Génération dynamique de gtfs-firstlast.json
+  const stopTimes = parse(fs.readFileSync(path.join(EXTRACT_DIR, "stop_times.txt"), "utf8"), { columns: true });
+  const trips = Object.fromEntries(
+    parse(fs.readFileSync(path.join(EXTRACT_DIR, "trips.txt"), "utf8"), { columns: true }).map(t => [t.trip_id, t])
+  );
+  const calendar = parse(fs.readFileSync(path.join(EXTRACT_DIR, "calendar.txt"), "utf8"), { columns: true });
+  const todayServiceIds = getTodayServiceIds(calendar);
+
+  const firstLast = {};
+  for (const [key, stop_id] of Object.entries(STOP_IDS)) {
+    firstLast[key] = getFirstLastForStop(stop_id, stopTimes, trips, calendar, todayServiceIds);
+  }
+  fs.writeFileSync(path.join(STATIC_DIR, "gtfs-firstlast.json"), JSON.stringify(firstLast, null, 2));
+  console.log("✅ Fichier généré :", path.join(STATIC_DIR, "gtfs-firstlast.json"));
 
   fs.writeFileSync(LAST_UPDATE_FILE, modified);
-  console.log(`🗓️ Date mise à jour enregistrée dans ${LAST_UPDATE_FILE}`);
 
-  fs.unlinkSync(ZIP_DEST);
-  fs.rmSync(EXTRACT_DIR, { recursive: true, force: true });
+  try { fs.unlinkSync(ZIP_DEST); } catch(e) { }
+  try { fs.rmSync(EXTRACT_DIR, { recursive: true, force: true }); } catch(e) { }
   console.log("🎉 Mise à jour GTFS terminée !");
 }
 
