@@ -14,7 +14,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   loop();
   setInterval(loop, 60_000);
   startWeatherLoop();
-  trouverProchaineCourseVincennes();
+  trouverProchaineCourseVincennes && trouverProchaineCourseVincennes();
 });
 
 function loop() {
@@ -57,25 +57,29 @@ async function horaire(id, stop, title) {
   const scheduleEl = document.getElementById(`${id}-schedules`);
   const alertEl = document.getElementById(`${id}-alert`);
   const firstlastEl = document.getElementById(`${id}-firstlast`);
+  scheduleEl.innerHTML = "<span style='color:#888;'>Chargement…</span>";
   try {
     const url = proxy + encodeURIComponent(`https://prim.iledefrance-mobilites.fr/marketplace/stop-monitoring?MonitoringRef=${stop}`);
     const data = await fetch(url).then(r => r.json());
-    const visits = data.Siri.ServiceDelivery.StopMonitoringDelivery[0]?.MonitoredStopVisit || [];
+    const visits = data?.Siri?.ServiceDelivery?.StopMonitoringDelivery?.[0]?.MonitoredStopVisit || [];
 
     let horairesHTML = "";
     const fl = cache.firstLast?.[id];
-    if (fl) firstlastEl.innerHTML = `♦️ ${fl.first} – ${fl.last}`;
+    if (fl && fl.first && fl.last)
+      firstlastEl.innerHTML = `♦️ ${fl.first} – ${fl.last}`;
+    else
+      firstlastEl.innerHTML = `♦️ Horaires premiers/derniers non renseignés`;
 
     if (!visits.length) {
       const now = new Date();
       const firstTime = parseTimeToDate(fl?.first);
       const lastTime = parseTimeToDate(fl?.last);
       if (firstTime && now < firstTime) {
-        scheduleEl.innerHTML = `Service non commencé – premier départ prévu à ${fl.first}`;
+        scheduleEl.innerHTML = `Service non commencé – premier départ prévu à ${fl?.first ?? "heure inconnue"}`;
         return;
       }
       if (lastTime && now > lastTime) {
-        scheduleEl.innerHTML = `Service terminé – prochain départ prévu à ${fl.first}`;
+        scheduleEl.innerHTML = `Service terminé – prochain départ prévu à ${fl?.first ?? "heure inconnue"}`;
         return;
       }
       scheduleEl.innerHTML = "Aucun passage prévu pour l’instant";
@@ -95,8 +99,8 @@ async function horaire(id, stop, title) {
       const callFirst = first.MonitoredVehicleJourney.MonitoredCall;
       const expFirst = new Date(callFirst.ExpectedDepartureTime);
       const now = new Date();
-      const timeToExpMin = Math.max(0, Math.round((expFirst - now)/60000));
-      const timeStr = expFirst.toLocaleTimeString("fr-FR",{hour:'2-digit',minute:'2-digit'});
+      const timeToExpMin = isNaN(expFirst - now) ? "?" : Math.max(0, Math.round((expFirst - now)/60000));
+      const timeStr = isNaN(expFirst.getTime()) ? "heure inconnue" : expFirst.toLocaleTimeString("fr-FR",{hour:'2-digit',minute:'2-digit'});
       horairesHTML += `<h3>Vers ${dest} – prochain départ dans : ${timeToExpMin} min (à ${timeStr})</h3>`;
 
       passages.forEach((v, idx) => {
@@ -106,8 +110,9 @@ async function horaire(id, stop, title) {
         const diff  = Math.round((exp - aimed) / 60000);
         const late  = diff > 1;
         const cancel = (call.ArrivalStatus || "").toLowerCase() === "cancelled";
-        const aimedStr = aimed.toLocaleTimeString("fr-FR",{hour:'2-digit',minute:'2-digit'});
-        const timeToExpMin = Math.max(0, Math.round((exp - now)/60000));
+        const aimedStr = isNaN(aimed.getTime()) ? "heure inconnue" : aimed.toLocaleTimeString("fr-FR",{hour:'2-digit',minute:'2-digit'});
+        const expStr = isNaN(exp.getTime()) ? "heure inconnue" : exp.toLocaleTimeString("fr-FR",{hour:'2-digit',minute:'2-digit'});
+        const timeToExpMin = isNaN(exp - now) ? "?" : Math.max(0, Math.round((exp - now)/60000));
 
         let crowd = "";
         const occ = v.MonitoredVehicleJourney?.OccupancyStatus || v.MonitoredVehicleJourney?.Occupancy || "";
@@ -120,7 +125,7 @@ async function horaire(id, stop, title) {
         let tag = "";
         if (fl?.first === aimedStr) tag = "🚦 Premier départ";
         if (fl?.last === aimedStr) tag = "🛑 Dernier départ";
-        if (timeToExpMin > 0 && timeToExpMin < 2) tag = "🟢 Imminent";
+        if (typeof timeToExpMin === "number" && timeToExpMin > 0 && timeToExpMin < 2) tag = "🟢 Imminent";
         const status = call.StopPointStatus || call.ArrivalProximityText || "";
         if (/arrivée|en gare|at stop|stopped/i.test(status) && id === "rer") tag = "🚉 En gare";
         if (/at stop|stopped/i.test(status) && id.startsWith("bus")) tag = "🚌 À l'arrêt";
@@ -129,9 +134,9 @@ async function horaire(id, stop, title) {
         if (cancel) {
           ligne += `❌ <s>${aimedStr} → ${dest}</s> train supprimé<br>`;
         } else if (late) {
-          ligne += `🕒 <s>${aimedStr}</s> → ${exp.toLocaleTimeString("fr-FR",{hour:'2-digit',minute:'2-digit'})} (+${diff} min) → ${dest} ${crowd} <b>${tag}</b> (dans ${timeToExpMin} min)<br>`;
+          ligne += `🕒 <s>${aimedStr}</s> → ${expStr} (+${diff} min) → ${dest} ${crowd} <b>${tag}</b> (dans ${timeToExpMin} min)<br>`;
         } else {
-          ligne += `🕒 ${exp.toLocaleTimeString("fr-FR",{hour:'2-digit',minute:'2-digit'})} → ${dest} ${crowd} <b>${tag}</b> (dans ${timeToExpMin} min)<br>`;
+          ligne += `🕒 ${expStr} → ${dest} ${crowd} <b>${tag}</b> (dans ${timeToExpMin} min)<br>`;
         }
         horairesHTML += ligne;
 
@@ -149,7 +154,7 @@ async function horaire(id, stop, title) {
     }
     scheduleEl.innerHTML = horairesHTML;
   } catch (e) {
-    scheduleEl.innerHTML = "Erreur horaire";
+    scheduleEl.innerHTML = "Erreur horaire ou données indisponibles";
   }
 }
 
@@ -167,8 +172,6 @@ async function lineAlert(stop) {
       return "";
     }
     const data = await res.json();
-    console.log("Réponse perturbations pour", line, data);
-
     const messages = data?.Siri?.ServiceDelivery?.GeneralMessageDelivery?.[0]?.InfoMessage || [];
     if (!messages.length) return "";
     const msg = messages[0]?.Content?.MessageText || messages[0]?.Message || "";
@@ -185,12 +188,16 @@ async function loadStops(journey) {
     const data = await fetch(url).then(r => r.ok ? r.json() : null);
     const list = data?.vehicle_journeys?.[0]?.stop_times?.map(s => s.stop_point.name).join(" ➔ ");
     const div = document.getElementById(`gares-${journey}`);
-    if (div) div.textContent = list ? `🚉 ${list}` : "";
-  } catch { /* ignore */ }
+    if (div) div.textContent = list ? `🚉 ${list}` : "Liste des arrêts indisponible";
+  } catch {
+    const div = document.getElementById(`gares-${journey}`);
+    if (div) div.textContent = "Liste des arrêts indisponible";
+  }
 }
 
 async function news() {
   const el = document.getElementById("newsTicker");
+  el.textContent = "Chargement des actus…";
   try {
     const r = await fetch("https://api.rss2json.com/v1/api.json?rss_url=https://www.francetvinfo.fr/titres.rss");
     el.textContent = (await r.json()).items.slice(0,3).map(i=>i.title).join(" • ");
@@ -199,6 +206,7 @@ async function news() {
 
 async function meteo() {
   const el = document.getElementById("meteo");
+  el.innerHTML = "Chargement météo…";
   try {
     const r = await fetch("https://api.open-meteo.com/v1/forecast?latitude=48.8402&longitude=2.4274&current_weather=true");
     const c = (await r.json()).current_weather;
