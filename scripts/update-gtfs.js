@@ -4,8 +4,8 @@ import fs from "fs";
 import path from "path";
 import { parse } from "csv-parse";
 import { once } from "events";
-import { getLatestZipUrl } from "./get-latest-gtfs.js";
 
+const GTFS_URL = "https://data.iledefrance-mobilites.fr/explore/dataset/offre-horaires-tc-gtfs-idfm/files/a925e164271e4bca93433756d6a340d1/download/"; // à mettre à jour manuellement
 const ZIP_DEST = "./gtfs.zip";
 const EXTRACT_DIR = "./gtfs";
 const STATIC_DIR = "./static";
@@ -15,6 +15,23 @@ const STOP_IDS = {
   bus77: "STIF:StopArea:SP:463641:",
   bus201: "STIF:StopArea:SP:463644:",
 };
+
+async function downloadGTFS() {
+  const res = await fetch(GTFS_URL);
+  if (!res.ok) throw new Error(`Erreur HTTP ${res.status} lors du téléchargement du GTFS`);
+  const fileStream = fs.createWriteStream(ZIP_DEST);
+  await new Promise((resolve, reject) => {
+    res.body.pipe(fileStream);
+    res.body.on("error", reject);
+    fileStream.on("finish", resolve);
+  });
+  console.log("✅ GTFS téléchargé :", GTFS_URL);
+}
+
+async function extract(zipPath, outDir) {
+  await fs.createReadStream(zipPath).pipe(unzipper.Extract({ path: outDir })).promise();
+  console.log("✅ Extraction terminée !");
+}
 
 async function parseCsvStream(filePath) {
   const records = [];
@@ -31,28 +48,6 @@ async function parseCsvSync(filePath) {
 
 function ensureDirSync(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-}
-
-async function downloadGTFS(zipUrl) {
-  const res = await fetch(zipUrl);
-  if (!res.ok) throw new Error(`Erreur HTTP ${res.status} lors du téléchargement du GTFS`);
-  const fileStream = fs.createWriteStream(ZIP_DEST);
-  await new Promise((resolve, reject) => {
-    res.body.pipe(fileStream);
-    res.body.on("error", reject);
-    fileStream.on("finish", resolve);
-  });
-  console.log("✅ GTFS téléchargé :", zipUrl);
-}
-
-async function extract(zipPath, outDir) {
-  await fs.createReadStream(zipPath).pipe(unzipper.Extract({ path: outDir })).promise();
-  console.log("✅ Extraction terminée !");
-}
-
-async function parseStops(stopsPath, outJson) {
-  const records = await parseCsvSync(stopsPath);
-  fs.writeFileSync(outJson, JSON.stringify(records, null, 2));
 }
 
 function getFirstLastForStop(stop_id, stopTimes, trips, calendar, todayServiceIds) {
@@ -87,16 +82,17 @@ function formatYYYYMMDD(d) {
 }
 
 async function main() {
-  const zipUrl = await getLatestZipUrl();
-  console.log("🔗 Dernier GTFS public trouvé :", zipUrl);
-
-  await downloadGTFS(zipUrl);
+  console.log("🚦 Téléchargement du GTFS en cours...");
+  await downloadGTFS();
   await extract(ZIP_DEST, EXTRACT_DIR);
 
   ensureDirSync(STATIC_DIR);
 
-  await parseStops(path.join(EXTRACT_DIR, "stops.txt"), path.join(STATIC_DIR, "gtfs-stops.json"));
+  console.log("📦 Parsing des arrêts...");
+  const stopsRecords = await parseCsvSync(path.join(EXTRACT_DIR, "stops.txt"));
+  fs.writeFileSync(path.join(STATIC_DIR, "gtfs-stops.json"), JSON.stringify(stopsRecords, null, 2));
 
+  console.log("📅 Parsing des horaires...");
   const stopTimes = await parseCsvStream(path.join(EXTRACT_DIR, "stop_times.txt"));
   const tripsArr = await parseCsvSync(path.join(EXTRACT_DIR, "trips.txt"));
   const trips = Object.fromEntries(tripsArr.map(t => [t.trip_id, t]));
