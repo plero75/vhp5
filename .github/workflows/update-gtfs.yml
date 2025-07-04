@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: '15 2 * * *'
+    - cron: '15 2 * * *' # chaque jour à 2h15 UTC (ajuste selon ton fuseau)
 
 jobs:
   maj-gtfs:
