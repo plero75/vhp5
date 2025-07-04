@@ -1,12 +1,11 @@
 import fetch from "node-fetch";
 import unzipper from "unzipper";
 import fs from "fs";
+import path from "path";
 import { parse } from "csv-parse";
 import { once } from "events";
-import path from "path";
+import { getLatestZipUrl } from "./get-latest-gtfs.js";
 
-// Page web publique où trouver le GTFS à jour
-const DATASET_PAGE = "https://data.iledefrance-mobilites.fr/explore/dataset/offre-horaires-tc-gtfs-idfm/files/";
 const ZIP_DEST = "./gtfs.zip";
 const EXTRACT_DIR = "./gtfs";
 const STATIC_DIR = "./static";
@@ -17,18 +16,22 @@ const STOP_IDS = {
   bus201: "STIF:StopArea:SP:463644:",
 };
 
-// Scrape le dernier lien ZIP GTFS depuis la page HTML
-async function getLatestZipUrl() {
-  const res = await fetch(DATASET_PAGE, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (compatible; GTFSbot/1.0)"
-    }
-  });
-  if (!res.ok) throw new Error(`Erreur HTTP ${res.status} lors du chargement de la page`);
-  const html = await res.text();
-  const match = html.match(/href="(\/explore\/dataset\/offre-horaires-tc-gtfs-idfm\/files\/[a-z0-9]+\/download\/)"/);
-  if (!match) throw new Error("Aucun lien GTFS ZIP trouvé sur la page !");
-  return "https://data.iledefrance-mobilites.fr" + match[1];
+// Lecture efficace (stream) d'un très gros CSV
+async function parseCsvStream(filePath) {
+  const records = [];
+  const parser = fs.createReadStream(filePath).pipe(parse({ columns: true }));
+  parser.on('data', row => records.push(row));
+  await once(parser, 'end');
+  return records;
+}
+
+function parseCsvSync(filePath) {
+  const { parse: parseSync } = require("csv-parse/sync");
+  return parseSync(fs.readFileSync(filePath, "utf8"), { columns: true });
+}
+
+function ensureDirSync(dir) {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
 async function downloadGTFS(zipUrl) {
@@ -48,24 +51,9 @@ async function extract(zipPath, outDir) {
   console.log("✅ Extraction terminée !");
 }
 
-function ensureDirSync(dir) {
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-}
-
 function parseStops(stopsPath, outJson) {
-  const csv = fs.readFileSync(stopsPath, "utf8");
-  const { parse: parseSync } = require("csv-parse/sync");
-  const records = parseSync(csv, { columns: true });
+  const records = parseCsvSync(stopsPath);
   fs.writeFileSync(outJson, JSON.stringify(records, null, 2));
-}
-
-// Lecture efficace (stream) d'un très gros CSV
-async function parseCsvStream(filePath) {
-  const records = [];
-  const parser = fs.createReadStream(filePath).pipe(parse({ columns: true }));
-  parser.on('data', row => records.push(row));
-  await once(parser, 'end');
-  return records;
 }
 
 function getFirstLastForStop(stop_id, stopTimes, trips, calendar, todayServiceIds) {
@@ -117,11 +105,10 @@ async function main() {
 
   // 5. Parse stop_times.txt (stream) et les autres (lecture classique)
   const stopTimes = await parseCsvStream(path.join(EXTRACT_DIR, "stop_times.txt"));
-  const { parse: parseSync } = require("csv-parse/sync");
   const trips = Object.fromEntries(
-    parseSync(fs.readFileSync(path.join(EXTRACT_DIR, "trips.txt"), "utf8"), { columns: true }).map(t => [t.trip_id, t])
+    parseCsvSync(path.join(EXTRACT_DIR, "trips.txt")).map(t => [t.trip_id, t])
   );
-  const calendar = parseSync(fs.readFileSync(path.join(EXTRACT_DIR, "calendar.txt"), "utf8"), { columns: true });
+  const calendar = parseCsvSync(path.join(EXTRACT_DIR, "calendar.txt"));
   const todayServiceIds = getTodayServiceIds(calendar);
 
   const firstLast = {};
