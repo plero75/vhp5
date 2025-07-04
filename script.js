@@ -14,7 +14,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   loop();
   setInterval(loop, 60_000);
   startWeatherLoop();
-  trouverProchaineCourseVincennes && trouverProchaineCourseVincennes();
+  if (typeof trouverProchaineCourseVincennes === "function") trouverProchaineCourseVincennes();
 });
 
 function loop() {
@@ -59,7 +59,7 @@ async function horaire(id, stop, title) {
   const firstlastEl = document.getElementById(`${id}-firstlast`);
   scheduleEl.innerHTML = "<span style='color:#888;'>Chargement…</span>";
   try {
-    const url = proxy + encodeURIComponent(`https://prim.iledefrance-mobilites.fr/marketplace/stop-monitoring?MonitoringRef=${stop}`);
+    const url = proxy + encodeURIComponent(`https://prim.iledefrance-mobilites.fr/marketplace/v2/navitia/stop-monitoring?MonitoringRef=${stop}`);
     const data = await fetch(url).then(r => r.json());
     const visits = data?.Siri?.ServiceDelivery?.StopMonitoringDelivery?.[0]?.MonitoredStopVisit || [];
 
@@ -165,7 +165,7 @@ async function lineAlert(stop) {
     return "";
   }
   try {
-    const url = proxy + encodeURIComponent(`https://prim.iledefrance-mobilites.fr/marketplace/general-message?LineRef=${line}`);
+    const url = proxy + encodeURIComponent(`https://prim.iledefrance-mobilites.fr/marketplace/v2/navitia/general-message?LineRef=${line}`);
     const res = await fetch(url);
     if (!res.ok) {
       console.error(`Erreur HTTP infos trafic : ${res.status} pour LineRef ${line}`);
@@ -184,7 +184,7 @@ async function lineAlert(stop) {
 
 async function loadStops(journey) {
   try {
-    const url = proxy + encodeURIComponent(`https://prim.iledefrance-mobilites.fr/marketplace/vehicle_journeys/${journey}`);
+    const url = proxy + encodeURIComponent(`https://prim.iledefrance-mobilites.fr/marketplace/v2/navitia/vehicle_journeys/${journey}`);
     const data = await fetch(url).then(r => r.ok ? r.json() : null);
     const list = data?.vehicle_journeys?.[0]?.stop_times?.map(s => s.stop_point.name).join(" ➔ ");
     const div = document.getElementById(`gares-${journey}`);
