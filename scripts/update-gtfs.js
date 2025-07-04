@@ -4,8 +4,7 @@ import fs from "fs";
 import { parse } from "csv-parse/sync";
 import path from "path";
 
-const PROXY = "https://ratp-proxy.hippodrome-proxy42.workers.dev/?url=";
-const META_URL = PROXY + encodeURIComponent("https://data.iledefrance-mobilites.fr/api/explore/v2.1/catalog/datasets/offre-horaires-tc-gtfs-idfm/exports/json");
+const ZIP_URL = "https://data.iledefrance-mobilites.fr/explore/dataset/offre-horaires-tc-gtfs-idfm/files/a925e164271e4bca93433756d6a340d1/download/"; // <-- Mets ici le lien actuel du GTFS
 const ZIP_DEST = "./gtfs.zip";
 const EXTRACT_DIR = "./gtfs";
 const STATIC_DIR = "./static";
@@ -16,19 +15,8 @@ const STOP_IDS = {
   bus201: "STIF:StopArea:SP:463644:",
 };
 
-async function getLatestInfo() {
-  const res = await fetch(META_URL);
-  if (!res.ok) throw new Error(`Erreur HTTP ${res.status} en récupérant les métadonnées`);
-  const data = await res.json();
-  const dataset = data[0];
-  const url = dataset?.attachments?.[0]?.url;
-  if (!url) throw new Error("Lien de téléchargement introuvable dans la réponse JSON.");
-  return { url };
-}
-
-async function downloadGTFS(url) {
-  const proxiedUrl = PROXY + encodeURIComponent(url);
-  const res = await fetch(proxiedUrl);
+async function downloadGTFS() {
+  const res = await fetch(ZIP_URL);
   if (!res.ok) throw new Error(`Erreur HTTP ${res.status} lors du téléchargement du GTFS`);
   const fileStream = fs.createWriteStream(ZIP_DEST);
   await new Promise((resolve, reject) => {
@@ -36,10 +24,12 @@ async function downloadGTFS(url) {
     res.body.on("error", reject);
     fileStream.on("finish", resolve);
   });
+  console.log("✅ GTFS téléchargé !");
 }
 
 async function extract(zipPath, outDir) {
   await fs.createReadStream(zipPath).pipe(unzipper.Extract({ path: outDir })).promise();
+  console.log("✅ Extraction terminée !");
 }
 
 function ensureDirSync(dir) {
@@ -84,8 +74,7 @@ function formatYYYYMMDD(d) {
 }
 
 async function main() {
-  const { url } = await getLatestInfo();
-  await downloadGTFS(url);
+  await downloadGTFS();
   await extract(ZIP_DEST, EXTRACT_DIR);
 
   ensureDirSync(STATIC_DIR);
