@@ -1,4 +1,4 @@
-name: MAJ GTFS (Automatique)
+name: MAJ GTFS PRIM
 
 on:
   push:
@@ -10,24 +10,15 @@ jobs:
   maj-gtfs:
     runs-on: ubuntu-latest
     steps:
-      - name: 🛒 Checkout du repo
-        uses: actions/checkout@v4
-
-      - name: 🟩 Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '20.x'
-
-      - name: ⬇️ Installation des dépendances
-        run: npm install
-
-      - name: ⚡ Exécution du script update-gtfs.js
-        run: node scripts/update-gtfs.js
-
-      - name: 💾 Commit & Push fichiers statiques
-        run: |
+      - run: npm install
+      - run: npm run update-gtfs
+      - run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add static/gtfs-stops.json static/gtfs-firstlast.json last-update.txt
-          git commit -m "🤖 Maj automatique GTFS [bot]" || echo "No changes to commit"
+          git add static/gtfs-stops.json static/gtfs-firstlast.json
+          git commit -m "🤖 Maj automatique GTFS PRIM [bot]" || echo "No changes to commit"
           git push
