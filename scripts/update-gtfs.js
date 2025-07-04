@@ -16,7 +16,6 @@ const STOP_IDS = {
   bus201: "STIF:StopArea:SP:463644:",
 };
 
-// Lecture efficace (stream) d'un très gros CSV
 async function parseCsvStream(filePath) {
   const records = [];
   const parser = fs.createReadStream(filePath).pipe(parse({ columns: true }));
@@ -25,9 +24,7 @@ async function parseCsvStream(filePath) {
   return records;
 }
 
-// Lecture synchrone classique
 async function parseCsvSync(filePath) {
-  // Dynamique import pour compatibilité ESM
   const { parse: parseSync } = await import("csv-parse/sync");
   return parseSync(fs.readFileSync(filePath, "utf8"), { columns: true });
 }
@@ -90,22 +87,16 @@ function formatYYYYMMDD(d) {
 }
 
 async function main() {
-  // 1. Scrape le lien GTFS à jour
   const zipUrl = await getLatestZipUrl();
   console.log("🔗 Dernier GTFS public trouvé :", zipUrl);
 
-  // 2. Télécharge le ZIP
   await downloadGTFS(zipUrl);
-
-  // 3. Décompresse
   await extract(ZIP_DEST, EXTRACT_DIR);
 
   ensureDirSync(STATIC_DIR);
 
-  // 4. Parse stops.txt → gtfs-stops.json (petit fichier)
   await parseStops(path.join(EXTRACT_DIR, "stops.txt"), path.join(STATIC_DIR, "gtfs-stops.json"));
 
-  // 5. Parse stop_times.txt (stream) et les autres (lecture classique)
   const stopTimes = await parseCsvStream(path.join(EXTRACT_DIR, "stop_times.txt"));
   const tripsArr = await parseCsvSync(path.join(EXTRACT_DIR, "trips.txt"));
   const trips = Object.fromEntries(tripsArr.map(t => [t.trip_id, t]));
