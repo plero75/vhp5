@@ -14,17 +14,22 @@ export async function getLatestZipUrl() {
   if (!res.ok) throw new Error(`Erreur HTTP ${res.status} lors du chargement de la page`);
   const html = await res.text();
 
-  // Pour debug : décommenter si besoin
+  // Décommenter pour debug
   // fs.writeFileSync("debug_idfm.html", html);
 
-  // Regex robuste pour attraper n'importe quel lien download
-  const matches = [...html.matchAll(/href=['"]([^'"]*\/files\/[a-zA-Z0-9]+\/download\/)['"]/g)];
+  // Regex robuste (simple/double quote, casse insensible)
+  const matches = [...html.matchAll(/href=['"]([^'"]*\/files\/[a-zA-Z0-9]+\/download\/)['"]/gi)];
   if (!matches.length) throw new Error("Aucun lien GTFS ZIP trouvé sur la page ! (regarde debug_idfm.html si besoin)");
   return "https://data.iledefrance-mobilites.fr" + matches[0][1];
 }
 
-// Si lancé en direct : affiche le lien
-if (require.main === module) {
+// Si exécuté directement en ligne de commande
+if (
+  typeof process !== "undefined" &&
+  process.argv &&
+  process.argv[1] &&
+  (process.argv[1].endsWith("get-latest-gtfs.js") || process.argv[1].endsWith("get-latest-gtfs.mjs"))
+) {
   getLatestZipUrl()
     .then(url => {
       console.log("Dernier ZIP GTFS public :", url);
