@@ -1,4 +1,4 @@
-name: MAJ GTFS PRIM
+name: MAJ GTFS Open Data
 
 on:
   push:
@@ -20,5 +20,5 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add static/gtfs-stops.json static/gtfs-firstlast.json
-          git commit -m "🤖 Maj automatique GTFS PRIM [bot]" || echo "No changes to commit"
+          git commit -m "🤖 Maj automatique GTFS [bot]" || echo "No changes to commit"
           git push
