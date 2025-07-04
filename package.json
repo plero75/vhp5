@@ -2,7 +2,7 @@
   "name": "vhp5",
   "version": "1.0.0",
   "type": "module",
-  "description": "Dashboard mobilité Vincennes + scripts GTFS PRIM via proxy",
+  "description": "Dashboard mobilité Vincennes + scripts GTFS",
   "main": "scripts/update-gtfs.js",
   "scripts": {
     "update-gtfs": "node scripts/update-gtfs.js"
