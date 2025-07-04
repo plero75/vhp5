@@ -222,11 +222,33 @@ async function loadStops(journey) {
 
 async function news() {
   const el = document.getElementById("newsTicker");
-  el.textContent = "Chargement des actus…";
   try {
     const r = await fetch("https://api.rss2json.com/v1/api.json?rss_url=https://www.francetvinfo.fr/titres.rss");
-    el.textContent = (await r.json()).items.slice(0,3).map(i=>i.title).join(" • ");
-  } catch { el.textContent = "Actus indisponibles"; }
+    const items = (await r.json()).items.slice(0, 5); // Prends 5 actus max
+
+    if (!items.length) {
+      el.innerHTML = "<div>Aucune actualité disponible</div>";
+      return;
+    }
+
+    el.innerHTML = items.map(i => `<div>${i.title}</div>`).join("");
+    startNewsCarousel();
+  } catch {
+    el.innerHTML = "<div>Actus indisponibles</div>";
+  }
+}
+
+function startNewsCarousel() {
+  const container = document.getElementById("newsTicker");
+  const items = container.querySelectorAll("div");
+  let index = 0;
+  items[index].classList.add("active");
+
+  setInterval(() => {
+    items[index].classList.remove("active");
+    index = (index + 1) % items.length;
+    items[index].classList.add("active");
+  }, 5000); // Change toutes les 5s
 }
 
 async function meteo() {
