@@ -1,0 +1,32 @@
+name: MAJ programme PMU Vincennes
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # Tous les jours à 6h UTC (8h heure de Paris l'été)
+  workflow_dispatch:       # Permet de lancer manuellement depuis GitHub Actions
+
+jobs:
+  fetch-programme:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Installer les dépendances
+        run: npm install jsdom node-fetch
+
+      - name: Générer static/programme.json depuis le PMU
+        run: node scripts/fetch-programme.js
+
+      - name: Commit et push du programme
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add static/programme.json || echo "Aucun fichier à ajouter"
+          git commit -m "🤖 Maj automatique programme PMU Vincennes [bot]" || echo "Pas de modifications"
+          git push || echo "Pas de modifications à pousser"
