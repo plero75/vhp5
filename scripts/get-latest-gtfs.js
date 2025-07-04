@@ -15,7 +15,7 @@ export async function getLatestZipUrl() {
   const html = await res.text();
 
   // Décommenter pour debug si besoin :
-  // fs.writeFileSync("debug_idfm.html", html);
+ fs.writeFileSync("debug_idfm.html", html);
 
   // Regex robuste pour simple/double quote, toutes casses
   const matches = [...html.matchAll(/href=['"]([^'"]*\/files\/[a-zA-Z0-9]+\/download\/)['"]/gi)];
