@@ -25,8 +25,10 @@ async function parseCsvStream(filePath) {
   return records;
 }
 
-function parseCsvSync(filePath) {
-  const { parse: parseSync } = require("csv-parse/sync");
+// Lecture synchrone classique
+async function parseCsvSync(filePath) {
+  // Dynamique import pour compatibilité ESM
+  const { parse: parseSync } = await import("csv-parse/sync");
   return parseSync(fs.readFileSync(filePath, "utf8"), { columns: true });
 }
 
@@ -51,8 +53,8 @@ async function extract(zipPath, outDir) {
   console.log("✅ Extraction terminée !");
 }
 
-function parseStops(stopsPath, outJson) {
-  const records = parseCsvSync(stopsPath);
+async function parseStops(stopsPath, outJson) {
+  const records = await parseCsvSync(stopsPath);
   fs.writeFileSync(outJson, JSON.stringify(records, null, 2));
 }
 
@@ -100,15 +102,14 @@ async function main() {
 
   ensureDirSync(STATIC_DIR);
 
-  // 4. Parse stops.txt → gtfs-stops.json (petit fichier, pas besoin de stream)
-  parseStops(path.join(EXTRACT_DIR, "stops.txt"), path.join(STATIC_DIR, "gtfs-stops.json"));
+  // 4. Parse stops.txt → gtfs-stops.json (petit fichier)
+  await parseStops(path.join(EXTRACT_DIR, "stops.txt"), path.join(STATIC_DIR, "gtfs-stops.json"));
 
   // 5. Parse stop_times.txt (stream) et les autres (lecture classique)
   const stopTimes = await parseCsvStream(path.join(EXTRACT_DIR, "stop_times.txt"));
-  const trips = Object.fromEntries(
-    parseCsvSync(path.join(EXTRACT_DIR, "trips.txt")).map(t => [t.trip_id, t])
-  );
-  const calendar = parseCsvSync(path.join(EXTRACT_DIR, "calendar.txt"));
+  const tripsArr = await parseCsvSync(path.join(EXTRACT_DIR, "trips.txt"));
+  const trips = Object.fromEntries(tripsArr.map(t => [t.trip_id, t]));
+  const calendar = await parseCsvSync(path.join(EXTRACT_DIR, "calendar.txt"));
   const todayServiceIds = getTodayServiceIds(calendar);
 
   const firstLast = {};
