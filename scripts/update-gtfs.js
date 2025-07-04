@@ -5,7 +5,7 @@ import { parse } from "csv-parse/sync";
 import path from "path";
 
 const PROXY = "https://ratp-proxy.hippodrome-proxy42.workers.dev/?url=";
-const GTFS_PRIM_URL = PROXY + encodeURIComponent("https://prim.iledefrance-mobilites.fr/marketplace/v2/gtfs-static");
+const META_URL = PROXY + encodeURIComponent("https://data.iledefrance-mobilites.fr/api/explore/v2.1/catalog/datasets/offre-horaires-tc-gtfs-idfm/exports/json");
 const ZIP_DEST = "./gtfs.zip";
 const EXTRACT_DIR = "./gtfs";
 const STATIC_DIR = "./static";
@@ -16,9 +16,20 @@ const STOP_IDS = {
   bus201: "STIF:StopArea:SP:463644:",
 };
 
-async function downloadGTFS() {
-  const res = await fetch(GTFS_PRIM_URL);
-  if (!res.ok) throw new Error(`Erreur HTTP ${res.status} lors du téléchargement du GTFS PRIM`);
+async function getLatestInfo() {
+  const res = await fetch(META_URL);
+  if (!res.ok) throw new Error(`Erreur HTTP ${res.status} en récupérant les métadonnées`);
+  const data = await res.json();
+  const dataset = data[0];
+  const url = dataset?.attachments?.[0]?.url;
+  if (!url) throw new Error("Lien de téléchargement introuvable dans la réponse JSON.");
+  return { url };
+}
+
+async function downloadGTFS(url) {
+  const proxiedUrl = PROXY + encodeURIComponent(url);
+  const res = await fetch(proxiedUrl);
+  if (!res.ok) throw new Error(`Erreur HTTP ${res.status} lors du téléchargement du GTFS`);
   const fileStream = fs.createWriteStream(ZIP_DEST);
   await new Promise((resolve, reject) => {
     res.body.pipe(fileStream);
@@ -47,7 +58,6 @@ function getFirstLastForStop(stop_id, stopTimes, trips, calendar, todayServiceId
     .map(s => s.departure_time)
     .filter(Boolean)
     .map(t => t.padStart(8, "0"));
-
   if (!todayTrips.length) return { first: null, last: null };
   todayTrips.sort();
   return {
@@ -74,7 +84,8 @@ function formatYYYYMMDD(d) {
 }
 
 async function main() {
-  await downloadGTFS();
+  const { url } = await getLatestInfo();
+  await downloadGTFS(url);
   await extract(ZIP_DEST, EXTRACT_DIR);
 
   ensureDirSync(STATIC_DIR);
