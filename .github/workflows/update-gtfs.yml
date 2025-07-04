@@ -19,8 +19,7 @@ jobs:
           node-version: '20.x'
 
       - name: ⬇️ Installation des dépendances
-        run: |
-          npm install csv-parse unzipper node-fetch
+        run: npm install
 
       - name: ⚡ Exécution du script update-gtfs.js
         run: node scripts/update-gtfs.js
