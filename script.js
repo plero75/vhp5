@@ -53,14 +53,12 @@ function fetchAll() {
   news();
 }
 
- async function horaire(id, stop, title) {
+async function horaire(id, stop, title) {
   const scheduleEl = document.getElementById(`${id}-schedules`);
-  const alertEl = document.getElementById(`${id}-alert`);
   const firstlastEl = document.getElementById(`${id}-firstlast`);
   scheduleEl.innerHTML = "<span style='color:#888;'>Chargement…</span>";
 
   try {
-    // Correction du chemin : plus de /v2/navitia → seulement /marketplace/stop-monitoring
     const url = proxy + encodeURIComponent(`https://prim.iledefrance-mobilites.fr/marketplace/stop-monitoring?MonitoringRef=${stop}`);
     const data = await fetch(url).then(r => {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -149,20 +147,41 @@ function fetchAll() {
         if (idx === 0) {
           const journey = v.MonitoredVehicleJourney?.VehicleJourneyRef;
           if (journey) {
-            horairesHTML += `<div id="gares-${journey}" class="stops-scroll">🚉 …</div>`;
+            horairesHTML += `<div id="gares-${journey}" class="stops-scroll">🚉 Chargement des arrêts…</div>`;
             loadStops(journey);
           }
         }
       });
-
-      const alert = await lineAlert(stop);
-      if (alert) horairesHTML += `<div class="info">⚠️ ${alert}</div>`;
     }
     scheduleEl.innerHTML = horairesHTML;
   } catch (e) {
     scheduleEl.innerHTML = "Erreur horaire ou données indisponibles (temps réel inaccessible)";
   }
 }
+
+async function loadStops(journey) {
+  try {
+    const url = proxy + encodeURIComponent(`https://prim.iledefrance-mobilites.fr/marketplace/vehicle_journeys/${journey}`);
+    const data = await fetch(url).then(r => r.ok ? r.json() : null);
+
+    const stops = data?.vehicle_journeys?.[0]?.stop_times;
+    const div = document.getElementById(`gares-${journey}`);
+
+    if (!stops?.length) {
+      if (div) div.textContent = "Liste des arrêts indisponible";
+      return;
+    }
+
+    const list = stops.map(s => s.stop_point.name).join(" ➔ ");
+    const finalDest = stops[stops.length - 1]?.stop_point?.name || "Destination inconnue";
+
+    if (div) div.innerHTML = `🚉 Destination finale : <b>${finalDest}</b><br>Trajet : ${list}`;
+  } catch (e) {
+    const div = document.getElementById(`gares-${journey}`);
+    if (div) div.textContent = "Erreur lors du chargement des arrêts";
+  }
+}
+
  
 async function lineAlert(stop) {
   const line = lineMap[stop];
