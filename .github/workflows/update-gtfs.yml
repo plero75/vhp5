@@ -1,7 +1,6 @@
 name: MAJ GTFS (Automatique)
 
 on:
-  # Lance à chaque push sur main OU chaque jour à 2h15 du matin
   push:
     branches: [main]
   schedule:
@@ -24,7 +23,7 @@ jobs:
           npm install csv-parse unzipper node-fetch
 
       - name: ⚡ Exécution du script update-gtfs.js
-        run: node update-gtfs.js
+        run: node scripts/update-gtfs.js
 
       - name: 💾 Commit & Push fichiers statiques
         run: |
