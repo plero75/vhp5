@@ -14,16 +14,16 @@ export async function getLatestZipUrl() {
   if (!res.ok) throw new Error(`Erreur HTTP ${res.status} lors du chargement de la page`);
   const html = await res.text();
 
-  // Décommenter pour debug
+  // Décommenter pour debug si besoin :
   // fs.writeFileSync("debug_idfm.html", html);
 
-  // Regex robuste (simple/double quote, casse insensible)
+  // Regex robuste pour simple/double quote, toutes casses
   const matches = [...html.matchAll(/href=['"]([^'"]*\/files\/[a-zA-Z0-9]+\/download\/)['"]/gi)];
   if (!matches.length) throw new Error("Aucun lien GTFS ZIP trouvé sur la page ! (regarde debug_idfm.html si besoin)");
   return "https://data.iledefrance-mobilites.fr" + matches[0][1];
 }
 
-// Si exécuté directement en ligne de commande
+// Si exécuté directement
 if (
   typeof process !== "undefined" &&
   process.argv &&
