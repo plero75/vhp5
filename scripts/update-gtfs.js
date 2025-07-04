@@ -1,10 +1,12 @@
 import fetch from "node-fetch";
 import unzipper from "unzipper";
 import fs from "fs";
-import { parse } from "csv-parse/sync";
+import { parse } from "csv-parse";
+import { once } from "events";
 import path from "path";
 
-const ZIP_URL = "https://data.iledefrance-mobilites.fr/explore/dataset/offre-horaires-tc-gtfs-idfm/files/a925e164271e4bca93433756d6a340d1/download/"; // <-- Mets ici le lien actuel du GTFS
+// Page web publique où trouver le GTFS à jour
+const DATASET_PAGE = "https://data.iledefrance-mobilites.fr/explore/dataset/offre-horaires-tc-gtfs-idfm/files/";
 const ZIP_DEST = "./gtfs.zip";
 const EXTRACT_DIR = "./gtfs";
 const STATIC_DIR = "./static";
@@ -15,8 +17,22 @@ const STOP_IDS = {
   bus201: "STIF:StopArea:SP:463644:",
 };
 
-async function downloadGTFS() {
-  const res = await fetch(ZIP_URL);
+// Scrape le dernier lien ZIP GTFS depuis la page HTML
+async function getLatestZipUrl() {
+  const res = await fetch(DATASET_PAGE, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; GTFSbot/1.0)"
+    }
+  });
+  if (!res.ok) throw new Error(`Erreur HTTP ${res.status} lors du chargement de la page`);
+  const html = await res.text();
+  const match = html.match(/href="(\/explore\/dataset\/offre-horaires-tc-gtfs-idfm\/files\/[a-z0-9]+\/download\/)"/);
+  if (!match) throw new Error("Aucun lien GTFS ZIP trouvé sur la page !");
+  return "https://data.iledefrance-mobilites.fr" + match[1];
+}
+
+async function downloadGTFS(zipUrl) {
+  const res = await fetch(zipUrl);
   if (!res.ok) throw new Error(`Erreur HTTP ${res.status} lors du téléchargement du GTFS`);
   const fileStream = fs.createWriteStream(ZIP_DEST);
   await new Promise((resolve, reject) => {
@@ -24,7 +40,7 @@ async function downloadGTFS() {
     res.body.on("error", reject);
     fileStream.on("finish", resolve);
   });
-  console.log("✅ GTFS téléchargé !");
+  console.log("✅ GTFS téléchargé :", zipUrl);
 }
 
 async function extract(zipPath, outDir) {
@@ -38,8 +54,18 @@ function ensureDirSync(dir) {
 
 function parseStops(stopsPath, outJson) {
   const csv = fs.readFileSync(stopsPath, "utf8");
-  const records = parse(csv, { columns: true });
+  const { parse: parseSync } = require("csv-parse/sync");
+  const records = parseSync(csv, { columns: true });
   fs.writeFileSync(outJson, JSON.stringify(records, null, 2));
+}
+
+// Lecture efficace (stream) d'un très gros CSV
+async function parseCsvStream(filePath) {
+  const records = [];
+  const parser = fs.createReadStream(filePath).pipe(parse({ columns: true }));
+  parser.on('data', row => records.push(row));
+  await once(parser, 'end');
+  return records;
 }
 
 function getFirstLastForStop(stop_id, stopTimes, trips, calendar, todayServiceIds) {
@@ -74,19 +100,28 @@ function formatYYYYMMDD(d) {
 }
 
 async function main() {
-  await downloadGTFS();
+  // 1. Scrape le lien GTFS à jour
+  const zipUrl = await getLatestZipUrl();
+  console.log("🔗 Dernier GTFS public trouvé :", zipUrl);
+
+  // 2. Télécharge le ZIP
+  await downloadGTFS(zipUrl);
+
+  // 3. Décompresse
   await extract(ZIP_DEST, EXTRACT_DIR);
 
   ensureDirSync(STATIC_DIR);
 
-  const stopsFile = path.join(EXTRACT_DIR, "stops.txt");
-  parseStops(stopsFile, path.join(STATIC_DIR, "gtfs-stops.json"));
+  // 4. Parse stops.txt → gtfs-stops.json (petit fichier, pas besoin de stream)
+  parseStops(path.join(EXTRACT_DIR, "stops.txt"), path.join(STATIC_DIR, "gtfs-stops.json"));
 
-  const stopTimes = parse(fs.readFileSync(path.join(EXTRACT_DIR, "stop_times.txt"), "utf8"), { columns: true });
+  // 5. Parse stop_times.txt (stream) et les autres (lecture classique)
+  const stopTimes = await parseCsvStream(path.join(EXTRACT_DIR, "stop_times.txt"));
+  const { parse: parseSync } = require("csv-parse/sync");
   const trips = Object.fromEntries(
-    parse(fs.readFileSync(path.join(EXTRACT_DIR, "trips.txt"), "utf8"), { columns: true }).map(t => [t.trip_id, t])
+    parseSync(fs.readFileSync(path.join(EXTRACT_DIR, "trips.txt"), "utf8"), { columns: true }).map(t => [t.trip_id, t])
   );
-  const calendar = parse(fs.readFileSync(path.join(EXTRACT_DIR, "calendar.txt"), "utf8"), { columns: true });
+  const calendar = parseSync(fs.readFileSync(path.join(EXTRACT_DIR, "calendar.txt"), "utf8"), { columns: true });
   const todayServiceIds = getTodayServiceIds(calendar);
 
   const firstLast = {};
