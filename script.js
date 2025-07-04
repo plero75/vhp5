@@ -185,6 +185,66 @@ async function news() {
     elNews.textContent = (await r.json()).items.slice(0,3).map(i=>i.title).join(" • ");
   } catch { elNews.textContent = "Actus indisponibles"; }
 }
+async function detecterProchaineReunionEtChargerProgramme() {
+  const el = document.getElementById("nextRace");
+  try {
+    const data = await fetch("./static/races.json").then(r => r.json());
+    const now = new Date();
+
+    const prochaine = data
+      .map(r => ({ ...r, dateTime: new Date(`${r.date}T${r.heure}`) }))
+      .filter(r => r.dateTime > now)
+      .sort((a, b) => a.dateTime - b.dateTime)[0];
+
+    if (!prochaine) {
+      el.innerHTML = "Aucune réunion PMU à venir.";
+      return;
+    }
+
+    const today = new Date();
+    const reunionDate = new Date(prochaine.date);
+
+    if (today.toDateString() === reunionDate.toDateString()) {
+      // Si c'est aujourd'hui, appelle le programme détaillé :
+      const dateStr = prochaine.date.split("-").reverse().join(""); // yyyy-mm-dd -> ddmmyyyy
+      chargerProgrammePMU(dateStr);
+    } else {
+      const options = { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" };
+      const dateStr = prochaine.dateTime.toLocaleString("fr-FR", options);
+      el.innerHTML = `🏇 Prochaine réunion : <b>${prochaine.description}</b><br>📅 ${dateStr}`;
+    }
+  } catch (e) {
+    console.error(e);
+    el.innerHTML = "Erreur lors de la détection de la prochaine réunion PMU.";
+  }
+}
+
+async function chargerProgrammePMU(dateStr) {
+  const el = document.getElementById("nextRace");
+  try {
+    const url = `https://offline.turfinfo.api.pmu.fr/rest/client/7/programme/${dateStr}`;
+    const data = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0" }
+    }).then(r => r.ok ? r.json() : null);
+
+    if (!data?.programme?.reunions?.length) {
+      el.innerHTML = "Aucune réunion disponible pour aujourd’hui.";
+      return;
+    }
+
+    const reunion = data.programme.reunions[0];
+    let html = `<h3>🏇 Programme PMU Vincennes du ${reunion.dateReunion}</h3>`;
+    html += "<ul>";
+    reunion.courses.forEach(c => {
+      html += `<li>🕒 ${c.heureDepart} – Course ${c.numOrdre}: ${c.intitule}</li>`;
+    });
+    html += "</ul>";
+    el.innerHTML = html;
+  } catch (e) {
+    console.error(e);
+    el.innerHTML = "Erreur lors du chargement du programme PMU.";
+  }
+}
 
 async function meteo() {
   const el = document.getElementById("meteo");
