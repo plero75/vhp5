@@ -1,0 +1,27 @@
+name: Génération fallback GTFS
+
+on:
+  schedule:
+    - cron: '0 3 * * *' # tous les jours à 3h UTC
+  workflow_dispatch: # permet de déclencher manuellement aussi
+
+jobs:
+  generate-fallback:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cloner le repo
+        uses: actions/checkout@v3
+
+      - name: Installer les dépendances
+        run: npm install csv-parse
+
+      - name: Exécuter le script de génération
+        run: node generate-gtfs-fallback.js
+
+      - name: Commit et push du fallback
+        run: |
+          git config user.name "GitHub Action"
+          git config user.email "action@github.com"
+          git add gtfs-today.json
+          git commit -m "MàJ quotidienne du fallback GTFS"
+          git push
