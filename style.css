@@ -75,3 +75,23 @@ a:focus, button:focus, .logo:focus {
   outline: 2px solid #003366;
   outline-offset: 2px;
 }
+.stops-scroll {
+  margin-top: 0.5rem;
+  white-space: nowrap;
+  overflow: hidden;
+  box-sizing: border-box;
+  border-top: 1px solid #ccc;
+  padding-top: 0.5rem;
+  font-size: 1rem;
+  color: #222;
+  animation: scroll-left 25s linear infinite;
+}
+
+@keyframes scroll-left {
+  0% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
