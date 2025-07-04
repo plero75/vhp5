@@ -53,22 +53,28 @@ function fetchAll() {
   news();
 }
 
-async function horaire(id, stop, title) {
+ async function horaire(id, stop, title) {
   const scheduleEl = document.getElementById(`${id}-schedules`);
   const alertEl = document.getElementById(`${id}-alert`);
   const firstlastEl = document.getElementById(`${id}-firstlast`);
   scheduleEl.innerHTML = "<span style='color:#888;'>Chargement…</span>";
+
   try {
-    const url = proxy + encodeURIComponent(`https://prim.iledefrance-mobilites.fr/marketplace/v2/navitia/stop-monitoring?MonitoringRef=${stop}`);
-    const data = await fetch(url).then(r => r.json());
+    // Correction du chemin : plus de /v2/navitia → seulement /marketplace/stop-monitoring
+    const url = proxy + encodeURIComponent(`https://prim.iledefrance-mobilites.fr/marketplace/stop-monitoring?MonitoringRef=${stop}`);
+    const data = await fetch(url).then(r => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    });
     const visits = data?.Siri?.ServiceDelivery?.StopMonitoringDelivery?.[0]?.MonitoredStopVisit || [];
 
     let horairesHTML = "";
     const fl = cache.firstLast?.[id];
-    if (fl && fl.first && fl.last)
+    if (fl && fl.first && fl.last) {
       firstlastEl.innerHTML = `♦️ ${fl.first} – ${fl.last}`;
-    else
+    } else {
       firstlastEl.innerHTML = `♦️ Horaires premiers/derniers non renseignés`;
+    }
 
     if (!visits.length) {
       const now = new Date();
@@ -82,7 +88,7 @@ async function horaire(id, stop, title) {
         scheduleEl.innerHTML = `Service terminé – prochain départ prévu à ${fl?.first ?? "heure inconnue"}`;
         return;
       }
-      scheduleEl.innerHTML = "Aucun passage prévu pour l’instant";
+      scheduleEl.innerHTML = "Aucun passage prévu pour l’instant (affichage théorique uniquement)";
       return;
     }
 
@@ -99,20 +105,20 @@ async function horaire(id, stop, title) {
       const callFirst = first.MonitoredVehicleJourney.MonitoredCall;
       const expFirst = new Date(callFirst.ExpectedDepartureTime);
       const now = new Date();
-      const timeToExpMin = isNaN(expFirst - now) ? "?" : Math.max(0, Math.round((expFirst - now)/60000));
-      const timeStr = isNaN(expFirst.getTime()) ? "heure inconnue" : expFirst.toLocaleTimeString("fr-FR",{hour:'2-digit',minute:'2-digit'});
+      const timeToExpMin = isNaN(expFirst - now) ? "?" : Math.max(0, Math.round((expFirst - now) / 60000));
+      const timeStr = isNaN(expFirst.getTime()) ? "heure inconnue" : expFirst.toLocaleTimeString("fr-FR", { hour: '2-digit', minute: '2-digit' });
       horairesHTML += `<h3>Vers ${dest} – prochain départ dans : ${timeToExpMin} min (à ${timeStr})</h3>`;
 
       passages.forEach((v, idx) => {
         const call = v.MonitoredVehicleJourney.MonitoredCall;
         const aimed = new Date(call.AimedDepartureTime);
-        const exp   = new Date(call.ExpectedDepartureTime);
-        const diff  = Math.round((exp - aimed) / 60000);
-        const late  = diff > 1;
+        const exp = new Date(call.ExpectedDepartureTime);
+        const diff = Math.round((exp - aimed) / 60000);
+        const late = diff > 1;
         const cancel = (call.ArrivalStatus || "").toLowerCase() === "cancelled";
-        const aimedStr = isNaN(aimed.getTime()) ? "heure inconnue" : aimed.toLocaleTimeString("fr-FR",{hour:'2-digit',minute:'2-digit'});
-        const expStr = isNaN(exp.getTime()) ? "heure inconnue" : exp.toLocaleTimeString("fr-FR",{hour:'2-digit',minute:'2-digit'});
-        const timeToExpMin = isNaN(exp - now) ? "?" : Math.max(0, Math.round((exp - now)/60000));
+        const aimedStr = isNaN(aimed.getTime()) ? "heure inconnue" : aimed.toLocaleTimeString("fr-FR", { hour: '2-digit', minute: '2-digit' });
+        const expStr = isNaN(exp.getTime()) ? "heure inconnue" : exp.toLocaleTimeString("fr-FR", { hour: '2-digit', minute: '2-digit' });
+        const timeToExpMin = isNaN(exp - now) ? "?" : Math.max(0, Math.round((exp - now) / 60000));
 
         let crowd = "";
         const occ = v.MonitoredVehicleJourney?.OccupancyStatus || v.MonitoredVehicleJourney?.Occupancy || "";
@@ -154,10 +160,10 @@ async function horaire(id, stop, title) {
     }
     scheduleEl.innerHTML = horairesHTML;
   } catch (e) {
-    scheduleEl.innerHTML = "Erreur horaire ou données indisponibles";
+    scheduleEl.innerHTML = "Erreur horaire ou données indisponibles (temps réel inaccessible)";
   }
 }
-
+ 
 async function lineAlert(stop) {
   const line = lineMap[stop];
   if (!line) {
