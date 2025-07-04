@@ -1,7 +1,7 @@
 import fetch from "node-fetch";
 import unzipper from "unzipper";
 import fs from "fs";
-import parse from "csv-parse/sync";
+import { parse } from "csv-parse/sync";
 import path from "path";
 
 const META_URL = "https://data.iledefrance-mobilites.fr/api/explore/v2.1/catalog/datasets/offre-horaires-tc-gtfs-idfm/exports/json";
