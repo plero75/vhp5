@@ -1,4 +1,3 @@
-// scripts/main.js
 import path from "path";
 import fs from "fs";
 import { downloadGTFS, extract } from "./gtfsDownloader.js";
@@ -22,6 +21,16 @@ async function main() {
     await extract(ZIP_DEST, EXTRACT_DIR);
     ensureDirSync(STATIC_DIR);
 
+    // Vérification fichiers nécessaires
+    const requiredFiles = ["stops.txt", "stop_times.txt", "trips.txt", "calendar.txt"];
+    for (const f of requiredFiles) {
+      const fullPath = path.join(EXTRACT_DIR, f);
+      if (!fs.existsSync(fullPath)) {
+        console.error(`❌ Fichier GTFS manquant : ${f}`);
+        process.exit(1);
+      }
+    }
+
     const stopsRecords = await parseCsvSync(path.join(EXTRACT_DIR, "stops.txt"));
     fs.writeFileSync(path.join(STATIC_DIR, "gtfs-stops.json"), JSON.stringify(stopsRecords, null, 2));
 
@@ -37,6 +46,9 @@ async function main() {
     }
     fs.writeFileSync(path.join(STATIC_DIR, "gtfs-firstlast.json"), JSON.stringify(firstLast, null, 2));
     console.log("✅ Fichier généré :", path.join(STATIC_DIR, "gtfs-firstlast.json"));
+
+    // Résumé lisible
+    console.log("Résumé des horaires extraits :", JSON.stringify(firstLast, null, 2));
 
     try { fs.unlinkSync(ZIP_DEST); } catch(e) { console.warn("⚠️ ZIP non supprimé :", e); }
     try { fs.rmSync(EXTRACT_DIR, { recursive: true, force: true }); } catch(e) { console.warn("⚠️ Dossier extraction non supprimé :", e); }
