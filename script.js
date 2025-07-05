@@ -201,14 +201,45 @@ async function fetchVelib() {
   }
 }
 
-function setupCourses() {
+async function setupCourses() {
   const container = document.getElementById("courses");
-  container.innerHTML = `<h2>🐎 Prochaines Courses</h2>
-    <div>🗓 Dim 6/07 – Prix Président – Départ : 16h15<div class="countdown" id="countdown-president"></div></div>
-    <div>🗓 Mar 8/07 – Grand Prix Été – Départ : 20h45<div class="countdown" id="countdown-grandprix"></div></div>`;
-  startCountdown('countdown-president', new Date('2025-07-06T16:15:00+02:00'));
-  startCountdown('countdown-grandprix', new Date('2025-07-08T20:45:00+02:00'));
+  container.innerHTML = "<h2>🐎 Prochaines Courses</h2>";
+
+  // Lis ton fichier JSON dynamique
+  let races = [];
+  try {
+    const res = await fetch("static/races.json");
+    if (res.ok) {
+      races = await res.json();
+    }
+  } catch {
+    container.innerHTML += "<div>Erreur chargement courses</div>";
+    return;
+  }
+
+  if (!races.length) {
+    container.innerHTML += "<div>Aucune course à venir.</div>";
+    return;
+  }
+
+  // Affiche chaque course dynamiquement
+  races.forEach((race, i) => {
+    // Formatage date/heure propre (ex: "Dim 6/07" ou "Mar 8/07")
+    const date = new Date(race.datetime);
+    const dayNames = ["Dim", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam"];
+    const label = `${dayNames[date.getDay()]} ${date.getDate()}/${String(date.getMonth()+1).padStart(2,"0")}`;
+    const hour = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+    const raceId = `countdown-race${i}`;
+    const block = document.createElement("div");
+    block.innerHTML = `🗓 ${label} – ${race.label} – Départ : ${hour}<div class="countdown" id="${raceId}"></div>`;
+    container.appendChild(block);
+
+    // Lancer le countdown
+    startCountdown(raceId, date);
+  });
 }
+
 function startCountdown(id, target) {
   function update() {
     const now = new Date(), diff = target - now;
