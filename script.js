@@ -1,316 +1,231 @@
-import { CONFIG } from './config.js';
-
-const proxy = CONFIG.proxy;
-const lineMap = {
-  "STIF:StopArea:SP:43135:": "STIF:Line::C01742:",
-  "STIF:StopArea:SP:463641:": "STIF:Line::C01789:",
-  "STIF:StopArea:SP:463644:": "STIF:Line::C01805:",
-};
-const cache = { stops: null, firstLast: null, lastFetch: 0 };
-const ONE_DAY = 86_400_000;
-
-document.addEventListener("DOMContentLoaded", async () => {
-  await loadStatic();
-  loop();
-  setInterval(loop, 60_000);
-  startWeatherLoop();
-  trouverProchaineCourseVincennes();
-});
-
-function loop() {
-  clock();
-  fetchAll();
-}
-
-function clock() {
-  document.getElementById("datetime").textContent =
-    new Date().toLocaleString("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-}
-
-async function loadStatic() {
-  try {
-    const saved = JSON.parse(localStorage.getItem("dashStatic") || "null");
-    if (saved && Date.now() - saved.lastFetch < ONE_DAY) {
-      Object.assign(cache, saved);
-      return;
-    }
-    const [stops, firstLast] = await Promise.all([
-      fetch("./static/gtfs-stops.json").then((r) => r.ok ? r.json() : []),
-      fetch("./static/gtfs-firstlast.json").then((r) => r.ok ? r.json() : {}),
-    ]);
-    Object.assign(cache, { stops, firstLast, lastFetch: Date.now() });
-    localStorage.setItem("dashStatic", JSON.stringify(cache));
-  } catch (e) {
-    console.warn("Static GTFS indisponible :", e);
+// Configuration des lignes à afficher
+const lines = [
+  {
+    id: "rer-a",
+    label: "RER A – Joinville-le-Pont",
+    monitoringRef: "STIF:StopArea:SP:43135:",
+    lineRef: "STIF:Line::C00001:",
+    gtfsId: "RER-A"
+  },
+  {
+    id: "bus-77",
+    label: "Bus 77 – Hippodrome",
+    monitoringRef: "STIF:StopArea:SP:463641:",
+    lineRef: "STIF:Line::C01777:",
+    gtfsId: "BUS-77"
+  },
+  {
+    id: "bus-201",
+    label: "Bus 201 – Pyramide/Breuil",
+    monitoringRef: "STIF:StopArea:SP:463644:",
+    lineRef: "STIF:Line::C02101:",
+    gtfsId: "BUS-201"
   }
-}
+];
 
-function fetchAll() {
-  horaire("rer", CONFIG.stops.rer, "🚆 RER A");
-  horaire("bus77", CONFIG.stops.bus77, "🚌 Bus 77");
-  horaire("bus201", CONFIG.stops.bus201, "🚌 Bus 201");
-  meteo();
-  news();
-}
+// Chemins vers tes datas statiques
+const GTFS_FIRSTLAST_URL = "static/gtfs-firstlast.json";
+const GTFS_STOPS_URL = "static/gtfs-stops.json";
 
-async function horaire(id, stop, title) {
-  const scheduleEl = document.getElementById(`${id}-schedules`);
-  const alertEl = document.getElementById(`${id}-alert`);
-  const firstlastEl = document.getElementById(`${id}-firstlast`);
+// Proxy pour les appels PRIM
+const proxyBase = "https://ratp-proxy.hippodrome-proxy42.workers.dev/?url=";
+
+let gtfsFirstLast = {};
+let gtfsStops = {};
+
+async function loadStaticGTFS() {
+  // Charge tes fallback GTFS une seule fois
   try {
-    const url = proxy + encodeURIComponent(`https://prim.iledefrance-mobilites.fr/marketplace/stop-monitoring?MonitoringRef=${stop}`);
-    const data = await fetch(url).then(r => r.json());
-    const visits = data.Siri.ServiceDelivery.StopMonitoringDelivery[0]?.MonitoredStopVisit || [];
+    gtfsFirstLast = await (await fetch(GTFS_FIRSTLAST_URL)).json();
+  } catch { gtfsFirstLast = {}; }
+  try {
+    gtfsStops = await (await fetch(GTFS_STOPS_URL)).json();
+  } catch { gtfsStops = {}; }
+}
 
-    let horairesHTML = "";
-    const fl = cache.firstLast?.[id];
-    if (fl) firstlastEl.innerHTML = `♦️ ${fl.first} – ${fl.last}`;
+async function buildDashboard() {
+  await loadStaticGTFS();
 
-    if (!visits.length) {
-      const now = new Date();
-      const firstTime = parseTimeToDate(fl?.first);
-      const lastTime = parseTimeToDate(fl?.last);
-      if (firstTime && now < firstTime) {
-        scheduleEl.innerHTML = `Service non commencé – premier départ prévu à ${fl.first}`;
-        return;
+  for (const line of lines) {
+    // 1. Fetch temps réel passages
+    const stopMonitoringUrl = proxyBase + encodeURIComponent(
+      `https://prim.iledefrance-mobilites.fr/marketplace/stop-monitoring?MonitoringRef=${line.monitoringRef}`
+    );
+    let visits = [];
+    try {
+      const res = await fetch(stopMonitoringUrl);
+      if (res.ok) {
+        const data = await res.json();
+        visits = data.Siri.ServiceDelivery.StopMonitoringDelivery[0].MonitoredStopVisit || [];
       }
-      if (lastTime && now > lastTime) {
-        scheduleEl.innerHTML = `Service terminé – prochain départ prévu à ${fl.first}`;
-        return;
-      }
-      scheduleEl.innerHTML = "Aucun passage prévu pour l’instant";
-      return;
-    }
+    } catch { /* Ignore, fallback plus bas */ }
 
-    const passagesByDest = {};
-    for (let v of visits.slice(0, 8)) {
-      const call = v.MonitoredVehicleJourney.MonitoredCall;
-      const dest = Array.isArray(call.DestinationDisplay) ? call.DestinationDisplay[0]?.value : call.DestinationDisplay || "Indisponible";
-      if (!passagesByDest[dest]) passagesByDest[dest] = [];
-      passagesByDest[dest].push(v);
-    }
-
-    for (const [dest, passages] of Object.entries(passagesByDest)) {
-      const first = passages[0];
-      const callFirst = first.MonitoredVehicleJourney.MonitoredCall;
-      const expFirst = new Date(callFirst.ExpectedDepartureTime);
-      const now = new Date();
-      const timeToExpMin = Math.max(0, Math.round((expFirst - now)/60000));
-      const timeStr = expFirst.toLocaleTimeString("fr-FR",{hour:'2-digit',minute:'2-digit'});
-      horairesHTML += `<h3>Vers ${dest} – prochain départ dans : ${timeToExpMin} min (à ${timeStr})</h3>`;
-
-      passages.forEach((v, idx) => {
-        const call = v.MonitoredVehicleJourney.MonitoredCall;
-        const aimed = new Date(call.AimedDepartureTime);
-        const exp   = new Date(call.ExpectedDepartureTime);
-        const diff  = Math.round((exp - aimed) / 60000);
-        const late  = diff > 1;
-        const cancel = (call.ArrivalStatus || "").toLowerCase() === "cancelled";
-        const aimedStr = aimed.toLocaleTimeString("fr-FR",{hour:'2-digit',minute:'2-digit'});
-        const timeToExpMin = Math.max(0, Math.round((exp - now)/60000));
-
-        let crowd = "";
-        const occ = v.MonitoredVehicleJourney?.OccupancyStatus || v.MonitoredVehicleJourney?.Occupancy || "";
-        if (occ) {
-          if (/full|crowd|high/i.test(occ)) crowd = "🔴";
-          else if (/standing|medium|average/i.test(occ)) crowd = "🟡";
-          else if (/seats|low|few|empty|available/i.test(occ)) crowd = "🟢";
-        }
-
-        let tag = "";
-        if (fl?.first === aimedStr) tag = "🚦 Premier départ";
-        if (fl?.last === aimedStr) tag = "🛑 Dernier départ";
-        if (timeToExpMin > 0 && timeToExpMin < 2) tag = "🟢 Imminent";
-        const status = call.StopPointStatus || call.ArrivalProximityText || "";
-        if (/arrivée|en gare|at stop|stopped/i.test(status) && id === "rer") tag = "🚉 En gare";
-        if (/at stop|stopped/i.test(status) && id.startsWith("bus")) tag = "🚌 À l'arrêt";
-
-        let ligne = "";
-        if (cancel) {
-          ligne += `❌ <s>${aimedStr} → ${dest}</s> train supprimé<br>`;
-        } else if (late) {
-          ligne += `🕒 <s>${aimedStr}</s> → ${exp.toLocaleTimeString("fr-FR",{hour:'2-digit',minute:'2-digit'})} (+${diff} min) → ${dest} ${crowd} <b>${tag}</b> (dans ${timeToExpMin} min)<br>`;
-        } else {
-          ligne += `🕒 ${exp.toLocaleTimeString("fr-FR",{hour:'2-digit',minute:'2-digit'})} → ${dest} ${crowd} <b>${tag}</b> (dans ${timeToExpMin} min)<br>`;
-        }
-        horairesHTML += ligne;
-
-        if (idx === 0) {
-          const journey = v.MonitoredVehicleJourney?.VehicleJourneyRef;
-          if (journey) {
-            horairesHTML += `<div id="gares-${journey}" class="stops-scroll">🚉 …</div>`;
-            loadStops(journey);
-          }
-        }
-      });
-
-      const alert = await lineAlert(stop);
-      if (alert) horairesHTML += `<div class="info">⚠️ ${alert}</div>`;
-    }
-    scheduleEl.innerHTML = horairesHTML;
-  } catch (e) {
-    scheduleEl.innerHTML = "Erreur horaire";
-  }
-}
-
-async function lineAlert(stop) {
-  const line = lineMap[stop];
-  if (!line) return "";
-  try {
-    const url = proxy + encodeURIComponent(`https://prim.iledefrance-mobilites.fr/marketplace/general-message?LineRef=${line}`);
-    const res = await fetch(url);
-    if (!res.ok) return "";
-    const data = await res.json();
-    const messages = data?.Siri?.ServiceDelivery?.GeneralMessageDelivery?.[0]?.InfoMessage || [];
-    if (!messages.length) return "";
-    const msg = messages[0]?.Content?.MessageText || messages[0]?.Message || "";
-    return msg ? `⚠️ ${msg}` : "";
-  } catch { return ""; }
-}
-
-async function loadStops(journey) {
-  try {
-    const url = proxy + encodeURIComponent(`https://prim.iledefrance-mobilites.fr/marketplace/vehicle_journeys/${journey}`);
-    const data = await fetch(url).then(r => r.ok ? r.json() : null);
-    const list = data?.vehicle_journeys?.[0]?.stop_times?.map(s => s.stop_point.name).join(" ➔ ");
-    const div = document.getElementById(`gares-${journey}`);
-    if (div) div.textContent = list ? `🚉 ${list}` : "";
-  } catch { /* ignore */ }
-}
-
-async function news() {
-  const elNews = document.getElementById("news-content");
-  try {
-    const r = await fetch("https://api.rss2json.com/v1/api.json?rss_url=https://www.francetvinfo.fr/titres.rss");
-    elNews.textContent = (await r.json()).items.slice(0,3).map(i=>i.title).join(" • ");
-  } catch { elNews.textContent = "Actus indisponibles"; }
-}
-async function detecterProchaineReunionEtChargerProgramme() {
-  const el = document.getElementById("nextRace");
-  try {
-    const data = await fetch("./static/races.json").then(r => r.json());
-    const now = new Date();
-
-    const prochaine = data
-      .map(r => ({ ...r, dateTime: new Date(`${r.date}T${r.heure}`) }))
-      .filter(r => r.dateTime > now)
-      .sort((a, b) => a.dateTime - b.dateTime)[0];
-
-    if (!prochaine) {
-      el.innerHTML = "Aucune réunion PMU à venir.";
-      return;
-    }
-
-    const today = new Date();
-    const reunionDate = new Date(prochaine.date);
-
-    if (today.toDateString() === reunionDate.toDateString()) {
-      // Si c'est aujourd'hui, appelle le programme détaillé :
-      const dateStr = prochaine.date.split("-").reverse().join(""); // yyyy-mm-dd -> ddmmyyyy
-      chargerProgrammePMU(dateStr);
-    } else {
-      const options = { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" };
-      const dateStr = prochaine.dateTime.toLocaleString("fr-FR", options);
-      el.innerHTML = `🏇 Prochaine réunion : <b>${prochaine.description}</b><br>📅 ${dateStr}`;
-    }
-  } catch (e) {
-    console.error(e);
-    el.innerHTML = "Erreur lors de la détection de la prochaine réunion PMU.";
-  }
-}
-
-async function chargerProgrammePMU(dateStr) {
-  const el = document.getElementById("nextRace");
-  try {
-    const url = `https://offline.turfinfo.api.pmu.fr/rest/client/7/programme/${dateStr}`;
-    const data = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0" }
-    }).then(r => r.ok ? r.json() : null);
-
-    if (!data?.programme?.reunions?.length) {
-      el.innerHTML = "Aucune réunion disponible pour aujourd’hui.";
-      return;
-    }
-
-    const reunion = data.programme.reunions[0];
-    let html = `<h3>🏇 Programme PMU Vincennes du ${reunion.dateReunion}</h3>`;
-    html += "<ul>";
-    reunion.courses.forEach(c => {
-      html += `<li>🕒 ${c.heureDepart} – Course ${c.numOrdre}: ${c.intitule}</li>`;
+    // 2. Regroupe par sens (direction)
+    const directions = {};
+    visits.forEach(v => {
+      let dir = (v.MonitoredVehicleJourney.DirectionRef || "unk").replace(/[:.]/g, "-");
+      if (!directions[dir]) directions[dir] = [];
+      directions[dir].push(v);
     });
-    html += "</ul>";
-    el.innerHTML = html;
-  } catch (e) {
-    console.error(e);
-    el.innerHTML = "Erreur lors du chargement du programme PMU.";
-  }
-}
 
-async function meteo() {
-  const el = document.getElementById("meteo");
-  try {
-    const r = await fetch("https://api.open-meteo.com/v1/forecast?latitude=48.8402&longitude=2.4274&current_weather=true");
-    const c = (await r.json()).current_weather;
-    el.innerHTML = `<h2>🌤 Météo locale</h2>${c.temperature} °C | Vent ${c.windspeed} km/h`;
-  } catch { el.textContent = "Erreur météo"; }
-}
+    // 3. Pour chaque sens/direction, affiche passages, arrêts desservis, trafic, premier/dernier
+    for (const sense of ["up", "down"]) {
+      const containerId = `${line.id}-${sense}`;
+      const container = document.getElementById(containerId);
+      if (!container) continue;
+      container.innerHTML = ""; // reset
 
-function startWeatherLoop() {
-  meteo();
-  setInterval(meteo, 30 * 60 * 1000);
-}
+      // 3.1. Prochains passages (temps réel, sinon vide)
+      const trips = directions[sense] || [];
+      if (trips.length === 0) {
+        container.innerHTML = "<div class='status warn'>Aucun passage temps réel. Service terminé ou données indisponibles.</div>";
+      } else {
+        for (const trip of trips) {
+          // Heures + destination
+          const aimed = new Date(trip.MonitoredVehicleJourney.MonitoredCall.AimedDepartureTime);
+          const expected = new Date(trip.MonitoredVehicleJourney.MonitoredCall.ExpectedDepartureTime);
+          const diffMin = Math.round((expected - new Date()) / 60000);
+          const dest = trip.MonitoredVehicleJourney.DestinationName;
+          const jpRef = trip.MonitoredVehicleJourney.JourneyPatternRef;
+          let stopsText = "";
 
-function parseTimeToDate(timeStr) {
-  if (!timeStr) return null;
-  const [hours, minutes] = timeStr.split(":").map(Number);
-  const d = new Date();
-  d.setHours(hours, minutes, 0, 0);
-  return d;
-}
+          // 3.2. Récupère arrêts desservis (PRIM ou fallback GTFS)
+          stopsText = await fetchStopsForJourney(jpRef, line.gtfsId, sense);
 
-async function trouverProchaineCourseVincennes() {
-  const elCourses = document.getElementById("courses-content");
-  const now = new Date();
-  let dateToCheck = new Date(now);
+          // Affichage passage
+          const div = document.createElement("div");
+          div.classList.add("passage");
+          div.innerHTML = `🕒 ${expected.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} – ${dest} (dans ${diffMin} min)
+            <div class="stops">${stopsText}</div>`;
+          container.appendChild(div);
+        }
+      }
 
-  for (let i=0; i<15; i++) {
-    const dateStr = dateToCheck.toISOString().slice(0,10).split("-").reverse().join("");
-    const url = `https://offline.turfinfo.api.pmu.fr/rest/client/7/programme/${dateStr}`;
-    const res = await fetch(url);
-    if (!res.ok) continue;
-    const data = await res.json();
+      // 3.3. Ajoute alertes trafic dynamiques pour ce sens
+      await injectTraffic(line.lineRef, container);
 
-    for (const reunion of data.reunions) {
-      if (reunion.hippodrome.nomCourt.toUpperCase() === "VINCENNES") {
-        const firstCourse = reunion.courses[0];
-        const courseDateTime = new Date(`${dateToCheck.toISOString().slice(0,10)}T${firstCourse.heureDepart}`);
-        lancerCompteARebours(courseDateTime, firstCourse.libelle, elCourses);
-        return;
+      // 3.4. Premier/dernier passage (fallback GTFS)
+      const schedule = getFirstLastTimes(line.gtfsId, sense);
+      if (schedule) {
+        const schedDiv = document.createElement("div");
+        schedDiv.className = "schedule";
+        schedDiv.innerHTML = `Premier : ${schedule.first} | Dernier : ${schedule.last}`;
+        container.appendChild(schedDiv);
       }
     }
-    dateToCheck.setDate(dateToCheck.getDate() + 1);
   }
-  elCourses.innerHTML = "Aucune course prévue à Vincennes dans les 15 prochains jours.";
 }
 
-function lancerCompteARebours(targetDate, courseName, el) {
-  function update() {
-    const now = new Date();
-    let diffMs = targetDate - now;
-    if (diffMs <= 0) {
-      el.innerHTML = `La prochaine course « ${courseName} » est en cours ou terminée !`;
-      clearInterval(intervalId);
-      return;
+// Récupère les arrêts pour un trip donné (PRIM, sinon GTFS)
+async function fetchStopsForJourney(journeyPatternRef, gtfsId, sense) {
+  if (!journeyPatternRef) return "";
+  // 1. Essaye PRIM
+  try {
+    const jpUrl = proxyBase + encodeURIComponent(
+      `https://prim.iledefrance-mobilites.fr/marketplace/journey-patterns/${journeyPatternRef}`
+    );
+    const res = await fetch(jpUrl);
+    if (res.ok) {
+      const jpData = await res.json();
+      if (jpData.stopPoints && jpData.stopPoints.length > 1) {
+        return "Dessert : " + jpData.stopPoints.map(sp => sp.name).join(" ➔ ");
+      }
     }
-    const diffSec = Math.floor(diffMs/1000);
-    const days = Math.floor(diffSec/86400);
-    const hours = Math.floor((diffSec%86400)/3600);
-    const minutes = Math.floor((diffSec%3600)/60);
-    const seconds = diffSec%60;
-
-    const countdown = `${days} jour${days!==1?"s":""} ${hours} heure${hours!==1?"s":""} ${minutes} minute${minutes!==1?"s":""} et ${seconds} seconde${seconds!==1?"s":""}`;
-    el.innerHTML = `Prochaine course à l’Hippodrome de Vincennes dans ${countdown} : « ${courseName} »`;
+  } catch { /* Ignore */ }
+  // 2. Fallback GTFS local
+  if (gtfsStops[gtfsId] && gtfsStops[gtfsId][sense]) {
+    return "Dessert : " + gtfsStops[gtfsId][sense].join(" ➔ ");
   }
-  update();
-  const intervalId = setInterval(update, 1000);
+  return "Arrêts inconnus";
 }
+
+// Ajoute les messages trafic (alertes) pour la ligne
+async function injectTraffic(lineRef, container) {
+  try {
+    const trafficUrl = proxyBase + encodeURIComponent(
+      `https://prim.iledefrance-mobilites.fr/marketplace/general-message?LineRef=${lineRef}`
+    );
+    const res = await fetch(trafficUrl);
+    if (!res.ok) return;
+    const data = await res.json();
+    const messages = data.Siri.ServiceDelivery.GeneralMessageDelivery[0].InfoMessage || [];
+    const now = new Date();
+    messages.forEach(m => {
+      const start = new Date(m.ValidityPeriod.StartTime);
+      const end = new Date(m.ValidityPeriod.EndTime);
+      if (now >= start && now <= end) {
+        const alertDiv = document.createElement("div");
+        alertDiv.classList.add("traffic-alert");
+        alertDiv.textContent = `⚠️ ${m.Message.Text}`;
+        container.appendChild(alertDiv);
+      }
+    });
+  } catch { /* Ignore */ }
+}
+
+// Retourne horaires premier/dernier train/bus depuis GTFS fallback
+function getFirstLastTimes(gtfsId, sense) {
+  if (!gtfsFirstLast[gtfsId] || !gtfsFirstLast[gtfsId][sense]) return null;
+  return gtfsFirstLast[gtfsId][sense]; // {first: "05:12", last: "00:40"}
+}
+
+// -------------- modules météo, velib, courses comme avant ----------------
+async function fetchWeather() {
+  const lat = 48.828, lon = 2.442;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) { document.getElementById("weather").innerHTML = "🌤 Erreur météo"; return; }
+    const data = await res.json();
+    const w = data.current_weather;
+    document.getElementById("weather").innerHTML = `<h2>🌤 Météo</h2>
+      Temp : ${w.temperature}°C<br>Vent : ${w.windspeed} km/h<br>Condition : ${w.weathercode}`;
+  } catch {
+    document.getElementById("weather").innerHTML = "🌤 Erreur météo";
+  }
+}
+
+async function fetchVelib() {
+  const url = "https://velib-metropole-opendata.smoove.pro/opendata/Velib_Metropole/station_status.json";
+  try {
+    const res = await fetch(url);
+    if (!res.ok) { document.getElementById("velib").innerHTML = "🚲 Erreur Vélib"; return; }
+    const data = await res.json();
+    const joinville = data.data.stations.find(s => s.station_id == "12104");
+    const breuil = data.data.stations.find(s => s.station_id == "12123");
+    document.getElementById("velib").innerHTML = `<h2>🚲 Vélib’</h2>
+      Joinville : 🚲 ${joinville?.num_bikes_available ?? "?"} vélos<br>
+      Breuil : 🚲 ${breuil?.num_bikes_available ?? "?"} vélos`;
+  } catch {
+    document.getElementById("velib").innerHTML = "🚲 Erreur Vélib";
+  }
+}
+
+function setupCourses() {
+  const container = document.getElementById("courses");
+  container.innerHTML = `<h2>🐎 Prochaines Courses</h2>
+    <div>🗓 Dim 6/07 – Prix Président – Départ : 16h15<div class="countdown" id="countdown-president"></div></div>
+    <div>🗓 Mar 8/07 – Grand Prix Été – Départ : 20h45<div class="countdown" id="countdown-grandprix"></div></div>`;
+  startCountdown('countdown-president', new Date('2025-07-06T16:15:00+02:00'));
+  startCountdown('countdown-grandprix', new Date('2025-07-08T20:45:00+02:00'));
+}
+function startCountdown(id, target) {
+  function update() {
+    const now = new Date(), diff = target - now;
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (diff <= 0) { el.textContent = "🏁 Départ !"; return; }
+    const d = Math.floor(diff / (1000*60*60*24)),
+          h = Math.floor((diff/3600000)%24),
+          m = Math.floor((diff/60000)%60),
+          s = Math.floor((diff/1000)%60);
+    el.textContent = `⏳ ${d}j ${h}h ${m}m ${s}s`;
+  }
+  update(); setInterval(update,1000);
+}
+
+// Lance tout au chargement
+buildDashboard();
+fetchWeather();
+fetchVelib();
+setupCourses();
