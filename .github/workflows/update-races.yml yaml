@@ -1,32 +1,32 @@
-name: MAJ automatique calendrier Vincennes
+name: Update Races
 
 on:
   schedule:
-    - cron: '0 5 * * 1'  # Chaque lundi à 5h UTC (6h Paris hiver, 7h été)
-  workflow_dispatch:       # Permet de lancer manuellement
+    - cron: '0 */6 * * *'  # Toutes les 6h, à adapter
+  workflow_dispatch:
 
 jobs:
-  update-races:
+  build:
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-      - name: Installer Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20.x'
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
 
-      - name: Installer les dépendances
-        run: npm install jsdom node-fetch
+    - name: Install dependencies
+      run: npm install
 
-      - name: Scraper calendrier Equidia et générer static/races.json
-        run: node scripts/scrape-equidia.js
+    - name: Scrape latest races
+      run: node scripts/scrape-vincennes.js
 
-      - name: Commit et push des mises à jour
-        run: |
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add static/races.json || echo "Aucun fichier à ajouter"
-          git commit -m "🤖 Maj automatique calendrier Vincennes [bot]" || echo "Pas de modifications"
-          git push || echo "Pas de modifications à pousser"
+    - name: Commit and push if changed
+      run: |
+        git config --global user.name 'github-actions[bot]'
+        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+        git add static/races.json
+        git diff --cached --quiet || git commit -m "MAJ automatique prochaines courses"
+        git push
