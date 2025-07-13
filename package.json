@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "update-gtfs": "node scripts/update-gtfs.js"
+    "update-gtfs": "python3 script/update-gtfs.py"
   },
   "dependencies": {
     "csv-parse": "^5.5.4",
